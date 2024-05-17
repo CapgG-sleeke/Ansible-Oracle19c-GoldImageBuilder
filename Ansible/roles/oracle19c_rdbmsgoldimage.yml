@@ -1,5 +1,0 @@
-- hosts: dbservers
-  user: root
-  
-  roles:
-   - dbgoldimage_create
