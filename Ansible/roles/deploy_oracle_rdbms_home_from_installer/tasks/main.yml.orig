@@ -1,0 +1,427 @@
+- name: display start golden image message
+  remote_user: "{{ root_user }}"
+  debug:
+    msg:
+      - 'Oracle Database Software 19c Installation For Golden Images : Started for Single Instance at {{ansible_date_time.iso8601}}:'
+
+- name: Ensure group dba exists with correct gid
+  ansible.builtin.group:
+    name: dba
+    state: present
+    gid: 3000
+
+- name: Ensure group oinstall exists with correct gid
+  ansible.builtin.group:
+    name: oinstall
+    state: present
+    gid: 3001
+
+- name: Ensure group oper exists with correct gid
+  ansible.builtin.group:
+    name: oper
+    state: present
+    gid: 3002
+
+- name: Ensure group backupdba exists with correct gid
+  ansible.builtin.group:
+    name: backupdba
+    state: present
+    gid: 3003
+
+- name: Ensure group dgdba exists with correct gid
+  ansible.builtin.group:
+    name: dgdba
+    state: present
+    gid: 3004
+
+- name: Ensure group kmdba exists with correct gid
+  ansible.builtin.group:
+    name: kmdba
+    state: present
+    gid: 3005
+
+- name: Ensure group RACdba exists with correct gid
+  ansible.builtin.group:
+    name: racdba
+    state: present
+    gid: 3006
+
+- name: Add the user oracle with a bash shell, appending the group admins and developers to the users groups
+  ansible.builtin.user:
+    name: oracle
+    uid: 3000
+    shell: /bin/bash
+    home: /hom/oracle
+    create_home: true
+    group: oinstall
+    groups: dba,oper,backupdba,dgdba,kmdba,racdba
+    generate_ssh_key: yes
+    ssh_key_type: ecdsa 
+    ssh_key_bits: 521
+    ssh_key_file: .ssh/id_ecdsa
+    expires: -1
+    append: yes
+
+- name: Ensure free space on disk is more than 7.2 GB
+  assert:
+    that: item.size_available > 7200000000
+    msg: "warning: disk space is low"
+  when: item.mount == mount_directory
+  with_items: "{{ ansible_mounts }}"
+  no_log: true
+
+- debug:
+    msg: "checking resource limits"
+
+- name: check file descriptor soft limit
+  shell:
+    cmd: ulimit -Sn
+  register: limits
+
+- name: ---
+  fail:
+    msg: "warning: file descriptor soft limit is {{ limits.stdout }}"
+  ignore_errors: yes
+  when: limits.stdout | int < 1024
+
+- name: check file descriptor hard limit
+  shell:
+    cmd: ulimit -Hn
+  register: limits
+
+- name: ---
+  fail:
+    msg: "warning: file descriptor hard limit is {{ limits.stdout }}"
+  ignore_errors: yes
+  when: limits.stdout | int < 65536
+
+- name: check available processes soft limit
+  shell:
+    cmd: ulimit -Su
+  register: limits
+
+- name: ---
+  fail:
+    msg: "warning: available processes soft limit is {{ limits.stdout }}"
+  ignore_errors: yes
+  when: limits.stdout | int < 2047
+
+- name: check available processes hard limit
+  shell:
+    cmd: ulimit -Hu
+  register: limits
+
+- name: ---
+  fail:
+    msg: "warning: available processes hard limit is {{ limits.stdout }}"
+  ignore_errors: yes
+  when: limits.stdout | int < 16384
+
+- name: check stack segment soft limit
+  shell:
+    cmd: ulimit -Ss
+  register: limits
+
+- name: ---
+  fail:
+    msg: "warning: stack segment soft limit is {{ limits.stdout }}"
+  ignore_errors: yes
+  when: limits.stdout | int < 10240 
+
+- name: check stack segment hard limit
+  shell:
+    cmd: ulimit -Hs
+  register: limits
+
+- name: ---
+  fail:
+    msg: "warning: stack segment hard limit is {{ limits.stdout }}"
+  ignore_errors: yes
+  when: limits.stdout | int < 10240 or limits.stdout | int > 32768 
+
+- name: create required directories
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  file:
+    path="{{ item }}"
+    state=directory
+    owner="{{ oracle_user }}"
+    group="{{ oracle_install_group }}"
+    mode=0775
+  with_items:
+    - "{{ root_directory }}"
+    - "{{ scripts_directory }}"
+    - "{{ oracle_inventory }}"
+    - "{{ oracle_base }}"
+    - "{{ stage_dir }}"
+    - "{{ oracle_home }}"
+  tags:
+   - db19c_createinventory
+
+- name: Install a list of prereq packages
+  ansible.builtin.yum:
+    name: "{{ packages }}"
+  vars:
+    packages:
+      - bc
+      - binutils
+      - compat-openssl11
+      - elfutils-libelf
+      - fontconfig
+      - glibc
+      - glibc-devel
+      - ksh
+      - libaio
+      - libasan
+      - liblsan
+      - libX11
+      - libXau
+      - libXi
+      - libXrender
+      - libXtst
+      - libxcrypt-compat
+      - libgcc
+      - libibverbs
+      - libnsl
+      - librdmacm
+      - libstdc++
+      - libxcb
+      - libvirt-libs
+      - make
+      - policycoreutils
+      - policycoreutils-python-utils
+      - smartmontools
+      - sysstat
+      - glibc-headers
+      - libnsl2
+      - net-tools
+      - nfs-utils 
+      - gcc
+      - unixODBC
+      - initscripts
+      - libaio-devel
+      - libstdc++-devel
+    state: present
+
+      #- name: Download Oracle 19c preinstallRPM
+      #get_url:
+      #validate_certs: no
+      #url: "{{ preinstall19c_url }}"
+      #dest: "{{ stage_dir }}/oracle-database-preinstall-19c.rpm"
+      #mode: '0775'
+      #tags:
+      #- download_oracle19c_preinstallation_package
+
+- name: Download and install rpm package 
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  ansible.builtin.yum:
+      sslverify: false
+      validate_certs: false
+      name: "{{ preinstall19c_url }}"
+      state: present
+  register: db19c_rpm_install
+  tags:
+   - db19c_preinstpkg
+
+- name: Download Oracle 19c archive from server
+  get_url:
+    validate_certs: no
+    url: "{{ oracle19c_url }}"
+    dest: "{{ stage_dir }}/LINUX.X64_193000_db_home.zip"
+    mode: '0440'
+  tags:
+    - download_oracle19c
+
+- name: Unpack Oracle 19c Database Software to the target server
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  become_user: "{{ oracle_user }}"
+  unarchive:
+     src={{ stage_dir }}/LINUX.X64_193000_db_home.zip
+     dest="{{ oracle_home }}"
+     remote_src=no
+     mode=0750
+     group="{{ oracle_install_group }}"
+     owner="{{ oracle_user }}"
+  tags:
+   - db19c_unpackdbsoftware
+
+- name: Remove 19c RDBMS Installation zip
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  ansible.builtin.file:
+    path: "{{ stage_dir }}/LINUX.X64_193000_db_home.zip"
+    state: absent
+
+- name: Download Oracle 19c Linux 9 installation patch from server
+  get_url:
+    validate_certs: no
+    url: "{{ oracle19c_intall_patch_url }}"
+    dest: "{{ stage_dir }}/p35775632_190000_Linux-x86-64.zip"
+    mode: '0775'
+  tags:
+    - download_installation_patch_oracle19c
+
+- name: Create required directories for Oracle 19c Installation Patch
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  file:
+    path="{{ item }}"
+    state=directory
+    owner="{{ oracle_user }}"
+    group="{{ oracle_install_group }}"
+    mode=0750
+  with_items:
+    - "{{ stage_dir }}/p35775632"
+  tags:
+   - db19c_createpatchinstallationdirs
+
+- name: Unpack Oracle 19c Database Linux 9 installation patch
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  become_user: "{{ oracle_user }}"
+  unarchive:
+     src={{ stage_dir }}/p35775632_190000_Linux-x86-64.zip
+     dest={{ stage_dir }}/p35775632
+     remote_src=no
+     mode=0750
+     group="{{ oracle_install_group }}"
+     owner="{{ oracle_user }}"
+  tags:
+   - db19c_unpackdbinstallationparch
+
+- name: Apply Oracle 19c Database Linux 9 installation patch
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  become_user: "{{ oracle_user }}"
+  unarchive:
+     src={{ stage_dir }}/p35775632/stubs.tar
+     dest={{ oracle_home }}/lib/stubs
+     remote_src=no
+     mode=0750
+     group="{{ oracle_install_group }}"
+     owner="{{ oracle_user }}"
+  tags:
+   - db19c_applydbinstallationparch
+
+- name: Remove some additional file from the tar we dont want README.txt
+  ansible.builtin.file:
+    path: "{{ oracle_home }}/lib/stubs/README.txt"
+    state: absent
+
+- name: Remove some additional file from the tar we dont want PatchSearch.xml
+  ansible.builtin.file:
+    path: "{{ oracle_home }}/lib/stubs/PatchSearch.xml"
+    state: absent
+
+- name: Remove some additional file from the tar we dont want stubs.tar
+  ansible.builtin.file:
+    path: "{{ oracle_home }}/lib/stubs/stubs.tar"
+    state: absent
+
+- name: Remove 19c Installation patch folder
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  ansible.builtin.file:
+    path: "{{ stage_dir }}/p35775632"
+    state: absent
+
+- name: Remove 19c Installation Patch zip
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  ansible.builtin.file:
+    path: "{{ stage_dir }}/p35775632_190000_Linux-x86-64.zip"
+    state: absent
+
+- name: Setup Oracle 19c Database Software silent response file
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  become_user: "{{ oracle_user }}"
+  template: src=roles/dbsoftware19c_install/templates/{{ oradbsoft_rsp }}.rsp.j2 dest={{ stage_dir }}/{{ oradbsoft_rsp }}.rsp mode=0755
+  tags:
+   - db19c_setuprspfile
+
+- name: Install Oracle 19c Database Software
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  become_user: "{{ oracle_user }}"
+  shell: "export CV_ASSUME_DISTID=OEL7.8; {{ oracle_home }}/runInstaller -silent -responseFile {{ stage_dir }}/{{ oradbsoft_rsp }}.rsp -noconfig -ignorePrereqFailure"
+  ignore_errors: True
+  tags:
+   - dbsoft19c_install
+
+- name: Execute orainstroot.sh
+  when: inventory_hostname in groups['dbservers'] 
+  remote_user: "{{ root_user }}"
+  shell: "{{ oracle_inventory }}/orainstRoot.sh" 
+  ignore_errors: True
+  tags:
+   - db19c_exeorainstroot
+
+- name: Execute root.sh
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  shell: "{{ oracle_home }}/root.sh -silent"
+  tags:
+   - db19c_exeroot
+
+- name: Download oPatch upgrade
+  get_url:
+    validate_certs: no
+    url: "{{ oracle19c_opatch_url }}"
+    dest: "{{ stage_dir }}/opatch_upgrade.zip"
+    mode: '0775'
+  tags:
+    - download_opatch_upgrade
+
+- name: Remove 19c OPatch folder
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  ansible.builtin.file:
+    path: "{{ oracle_home }}/OPatch"
+    state: absent
+
+- name: Create 19c OPatch Directory
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  ansible.builtin.file:
+    path: "{{ oracle_home }}/OPatch"
+    state: directory
+    owner: "{{ oracle_user }}"
+    group: "{{ oracle_install_group }}"
+    mode: 0750
+  tags:
+   - db19c_Create_OPatch_Directory
+
+- name: Apply OPatch Upgrade
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  become_user: "{{ oracle_user }}"
+  unarchive:
+     src={{ stage_dir }}/opatch_upgrade.zip
+     dest={{ oracle_home }}
+     remote_src=no
+     mode=0750
+     group="{{ oracle_install_group }}"
+     owner="{{ oracle_user }}"
+  tags:
+   - db19c_apply_opatch_Upgrade
+
+- name: display post install message
+  debug:
+    msg:
+      - 'This Steps completed below task for Single Instance at {{ansible_date_time.iso8601}}:'
+      - '- Install Single Instance Oracle Database Software'
+      - 'Next Steps left to do:'
+      - '- Create SI empty Container Database on server ora-x1'
+      - '- Create SI Pluggable Database on server ora-x1'
+      - '- Deinstall Single Instance Oracle Database Software'
+      - '- END OF ALL: git clone of OracleDBAwithAnsible repository will be shared'

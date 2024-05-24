@@ -1,0 +1,109 @@
+- name: Display start golden image creation process
+  remote_user: "{{ root_user }}"
+  debug:
+    msg:
+      - 'Oracle Database Software 19c Golden Image Creations : Started for Single Instance at {{ansible_date_time.iso8601}}:'
+
+- name: Ensure free space on disk is more than 3.6 GB
+  assert:
+    that: item.size_available > 3600000000
+    msg: "warning: disk space is low"
+  when: item.mount == mount_directory
+  with_items: "{{ ansible_mounts }}"
+  no_log: true
+
+- name: Create required directories
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  file:
+    path="{{ item }}"
+    state=directory
+    owner="{{ oracle_user }}"
+    group="{{ oracle_install_group }}"
+    mode=0775
+  with_items:
+    - "{{ oracle_gold_image_directory }}"
+    - "{{ stage_dir }}"
+  tags:
+   - db19c_CreateRequiredDirs
+
+- name: Create Gold image zip
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  become_user: "{{ oracle_user }}"
+  shell: "export CV_ASSUME_DISTID=OEL7.8; {{ oracle_home }}/runInstaller -silent -createGoldImage -destinationLocation {{ stage_dir }}"
+  ignore_errors: True
+  register: command_contents
+  tags:
+   - dbgold19c_create
+
+- name: Get Name of new gold Image creation
+  ansible.builtin.set_fact:
+    _gold_dst_image_file: "{{ oracle_gold_image_directory }}/{{goldimage_name}}"
+
+- name: Get Name of src gold Image creation
+  when: command_contents.stdout | default('', true) | trim != ''
+  remote_user: "{{ root_user }}"
+  ansible.builtin.set_fact:
+    _gold_src_image_file: "{{ command_contents.stdout_lines | select('search', 'Gold Image location: .*') | first | replace(' ', '') | split(':') | last }}"
+
+- name: Print random location of goldimage zip location
+  debug:
+    msg:
+      - "{{ _gold_src_image_file }}"
+
+- name: Check if SRC file exists
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  with_items:
+    - "{{ _gold_src_image_file  }}"
+  register: check_src_file_name
+
+- name: Check if SRC file exists
+  ansible.builtin.stat:
+    path: "{{ _gold_src_image_file }}"
+  register: check_src_file_name
+
+- debug:
+    msg: "{{check_src_file_name}}"
+
+- name: Check if DST file exists
+  ansible.builtin.stat:
+    path: "{{ _gold_dst_image_file }}"
+  register: check_dst_file_name
+  when:
+    - check_src_file_name.stat.exists is true
+
+- name: Delete destination file if exists - If it exists
+  ansible.builtin.file:
+    path: _gold_dst_image_file
+    state: absent
+  when:
+    - check_dst_file_name.stat.exists is true
+
+- name: Check if DST file exists - Confirm remove
+  ansible.builtin.stat:
+    path: "{{ _gold_dst_image_file }}"
+  register: check_dst_file_name
+  when:
+    -  check_src_file_name.stat.exists is true
+
+- name: Copy gold image to destination
+  copy:
+    src: "{{ _gold_src_image_file }}"
+    dest: "{{ _gold_dst_image_file }}"
+    owner: apache 
+    group: apache
+    mode: 0440
+  when:
+    - check_src_file_name.stat.exists is true
+    - check_dst_file_name.stat.exists is false
+
+- name: display post install message
+  debug:
+    msg:
+      - 'This Steps completed below task for Gold Image build from an Oracle Home : {{ansible_date_time.iso8601}}:'
+      - '- Checks locations exist'
+      - '- Create default goldimage'
+      - '- Moves to the stage website ready for deployment'

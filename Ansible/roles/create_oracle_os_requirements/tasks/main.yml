@@ -1,0 +1,148 @@
+- name: Display Message Setup OS environment requirements for Oracle SIngle instance RDBMS install
+  remote_user: "{{ root_user }}"
+  debug:
+    msg:
+      - 'Oracle RDBMS OS Setup for 19c Installation : Started for Single Instance at {{ansible_date_time.iso8601}}:'
+
+- name: Ensure free space on disk is more than 7.2 GB
+  assert:
+    that: item.size_available > 7200000000
+    msg: "warning: disk space is low"
+  when: item.mount == mount_directory
+  with_items: "{{ ansible_mounts }}"
+  no_log: true
+
+- debug:
+    msg: "checking resource limits"
+
+- name: check file descriptor soft limit
+  shell:
+    cmd: ulimit -Sn
+  register: limits
+
+- name: ---
+  fail:
+    msg: "warning: file descriptor soft limit is {{ limits.stdout }}"
+  ignore_errors: yes
+  when: limits.stdout | int < 1024
+
+- name: check file descriptor hard limit
+  shell:
+    cmd: ulimit -Hn
+  register: limits
+
+- name: ---
+  fail:
+    msg: "warning: file descriptor hard limit is {{ limits.stdout }}"
+  ignore_errors: yes
+  when: limits.stdout | int < 65536
+
+- name: check available processes soft limit
+  shell:
+    cmd: ulimit -Su
+  register: limits
+
+- name: ---
+  fail:
+    msg: "warning: available processes soft limit is {{ limits.stdout }}"
+  ignore_errors: yes
+  when: limits.stdout | int < 2047
+
+- name: check available processes hard limit
+  shell:
+    cmd: ulimit -Hu
+  register: limits
+
+- name: ---
+  fail:
+    msg: "warning: available processes hard limit is {{ limits.stdout }}"
+  ignore_errors: yes
+  when: limits.stdout | int < 16384
+
+- name: check stack segment soft limit
+  shell:
+    cmd: ulimit -Ss
+  register: limits
+
+- name: ---
+  fail:
+    msg: "warning: stack segment soft limit is {{ limits.stdout }}"
+  ignore_errors: yes
+  when: limits.stdout | int < 10240 
+
+- name: check stack segment hard limit
+  shell:
+    cmd: ulimit -Hs
+  register: limits
+
+- name: ---
+  fail:
+    msg: "warning: stack segment hard limit is {{ limits.stdout }}"
+  ignore_errors: yes
+  when: limits.stdout | int < 10240 or limits.stdout | int > 32768 
+
+- name: Install a list of prereq packages
+  ansible.builtin.yum:
+    name: "{{ packages }}"
+  vars:
+    packages:
+      - bc
+      - binutils
+      - compat-openssl11
+      - elfutils-libelf
+      - fontconfig
+      - glibc
+      - glibc-devel
+      - ksh
+      - libaio
+      - libasan
+      - liblsan
+      - libX11
+      - libXau
+      - libXi
+      - libXrender
+      - libXtst
+      - libxcrypt-compat
+      - libgcc
+      - libibverbs
+      - libnsl
+      - librdmacm
+      - libstdc++
+      - libxcb
+      - libvirt-libs
+      - make
+      - policycoreutils
+      - policycoreutils-python-utils
+      - smartmontools
+      - sysstat
+      - glibc-headers
+      - libnsl2
+      - net-tools
+      - nfs-utils 
+      - gcc
+      - unixODBC
+      - initscripts
+      - libaio-devel
+      - libstdc++-devel
+    state: present
+
+- name: Download and install rpm package 
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  ansible.builtin.yum:
+      sslverify: false
+      validate_certs: false
+      name: "{{ preinstall19c_url }}"
+      state: present
+  register: db19c_rpm_install
+  tags:
+   - db19c_preinstpkg
+
+- name: display post install message
+  debug:
+    msg:
+      - 'This Steps completed below task for Single Instance at {{ansible_date_time.iso8601}}:'
+      - '- Create ulimit Requirements for Linux x64'
+      - '- Added Required Packages to the OS'
+      - '- Created Required Dirs ready for use'

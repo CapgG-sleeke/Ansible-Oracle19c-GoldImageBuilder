@@ -1,0 +1,23 @@
+- name: Cleanup Role Temporary Dirs
+  remote_user: "{{ root_user }}"
+  debug:
+    msg:
+      - 'Oracle Database Software 19c Installation : Remove required folders : Started for Single Instance at {{ansible_date_time.iso8601}}:'
+
+- name: create required directories
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  ansible.builtin.file:
+    path="{{ item }}"
+    state=absent
+  with_items:
+    - "{{ scripts_directory }}"
+    - "{{ stage_dir }}"
+  tags:
+   - db19c_delete_temp_folders
+
+- name: display post install message
+  debug:
+    msg:
+      - 'This Steps completed below task for Single Instance at {{ansible_date_time.iso8601}}:'
+      - '- Cleaned up temp files for roles to work'

@@ -1,0 +1,163 @@
+- name: display start golden image message
+  remote_user: "{{ root_user }}"
+  debug:
+    msg:
+      - 'Oracle Database Software 19c Installation For Golden Images : Started for Single Instance at {{ansible_date_time.iso8601}}:'
+
+- name: Download Oracle 19c archive from server
+  get_url:
+    validate_certs: no
+    url: "{{ oracle19c_url }}"
+    dest: "{{ stage_dir }}/LINUX.X64_193000_db_home.zip"
+    mode: '0440'
+  tags:
+    - download_oracle19c
+
+- name: Unpack Oracle 19c Database Software to the target server
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  become_user: "{{ oracle_user }}"
+  unarchive:
+     src={{ stage_dir }}/LINUX.X64_193000_db_home.zip
+     dest="{{ oracle_home }}"
+     remote_src=no
+     mode=0750
+     group="{{ oracle_install_group }}"
+     owner="{{ oracle_user }}"
+  tags:
+   - db19c_unpackdbsoftware
+
+- name: Remove 19c RDBMS Installation zip
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  ansible.builtin.file:
+    path: "{{ stage_dir }}/LINUX.X64_193000_db_home.zip"
+    state: absent
+
+- name: Download Oracle 19c Linux 9 installation patch from server
+  get_url:
+    validate_certs: no
+    url: "{{ oracle19c_intall_patch_url }}"
+    dest: "{{ stage_dir }}/p35775632_190000_Linux-x86-64.zip"
+    mode: '0775'
+  tags:
+    - download_installation_patch_oracle19c
+
+- name: Create required directories for Oracle 19c Installation Patch
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  file:
+    path="{{ item }}"
+    state=directory
+    owner="{{ oracle_user }}"
+    group="{{ oracle_install_group }}"
+    mode=0750
+  with_items:
+    - "{{ stage_dir }}/p35775632"
+  tags:
+   - db19c_createpatchinstallationdirs
+
+- name: Unpack Oracle 19c Database Linux 9 installation patch
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  become_user: "{{ oracle_user }}"
+  unarchive:
+     src={{ stage_dir }}/p35775632_190000_Linux-x86-64.zip
+     dest={{ stage_dir }}/p35775632
+     remote_src=no
+     mode=0750
+     group="{{ oracle_install_group }}"
+     owner="{{ oracle_user }}"
+  tags:
+   - db19c_unpackdbinstallationparch
+
+- name: Apply Oracle 19c Database Linux 9 installation patch
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  become_user: "{{ oracle_user }}"
+  unarchive:
+     src={{ stage_dir }}/p35775632/stubs.tar
+     dest={{ oracle_home }}/lib/stubs
+     remote_src=no
+     mode=0750
+     group="{{ oracle_install_group }}"
+     owner="{{ oracle_user }}"
+  tags:
+   - db19c_applydbinstallationparch
+
+- name: Remove some additional file from the tar we dont want README.txt
+  ansible.builtin.file:
+    path: "{{ oracle_home }}/lib/stubs/README.txt"
+    state: absent
+
+- name: Remove some additional file from the tar we dont want PatchSearch.xml
+  ansible.builtin.file:
+    path: "{{ oracle_home }}/lib/stubs/PatchSearch.xml"
+    state: absent
+
+- name: Remove some additional file from the tar we dont want stubs.tar
+  ansible.builtin.file:
+    path: "{{ oracle_home }}/lib/stubs/stubs.tar"
+    state: absent
+
+- name: Remove 19c Installation patch folder
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  ansible.builtin.file:
+    path: "{{ stage_dir }}/p35775632"
+    state: absent
+
+- name: Remove 19c Installation Patch zip
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  ansible.builtin.file:
+    path: "{{ stage_dir }}/p35775632_190000_Linux-x86-64.zip"
+    state: absent
+
+- name: Setup Oracle 19c Database Software silent response file
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  become_user: "{{ oracle_user }}"
+  template: src=roles/deploy_oracle_rdbms_home_from_installer/templates/{{ oradbsoft_rsp }}.rsp.j2 dest={{ stage_dir }}/{{ oradbsoft_rsp }}.rsp mode=0440
+  tags:
+   - db19c_setuprspfile
+
+- name: Install Oracle 19c Database Software
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  become_user: "{{ oracle_user }}"
+  shell: "export CV_ASSUME_DISTID=OEL7.8; {{ oracle_home }}/runInstaller -silent -responseFile {{ stage_dir }}/{{ oradbsoft_rsp }}.rsp -noconfig -ignorePrereqFailure"
+  ignore_errors: True
+  tags:
+   - dbsoft19c_install
+
+- name: Execute orainstroot.sh
+  when: inventory_hostname in groups['dbservers'] 
+  remote_user: "{{ root_user }}"
+  shell: "{{ oracle_inventory }}/orainstRoot.sh" 
+  ignore_errors: True
+  tags:
+   - db19c_exeorainstroot
+
+- name: Execute root.sh
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  shell: "{{ oracle_home }}/root.sh -silent"
+  tags:
+   - db19c_exeroot
+
+- name: display post install message
+  debug:
+    msg:
+      - 'This Steps completed below task for Single Instance at {{ansible_date_time.iso8601}}:'
+      - '- Install Single Instance Oracle Database Software'
+      - 'Next Steps left to do:'
+      - '- Create SI empty Container Database on server ora-x1'
+      - '- Create SI Pluggable Database on server ora-x1'
+      - '- Deinstall Single Instance Oracle Database Software'
+      - '- END OF ALL: git clone of OracleDBAwithAnsible repository will be shared'

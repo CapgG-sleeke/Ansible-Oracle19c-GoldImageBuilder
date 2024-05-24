@@ -1,0 +1,27 @@
+- name: Display Gold Image Deployment
+  remote_user: "{{ root_user }}"
+  debug:
+    msg:
+      - 'Oracle Gold Image Database Deployment : Started for Single Instance at {{ansible_date_time.iso8601}}:'
+
+- name: Add the user oracle with a bash shell, appending the group admins and developers to the users groups
+  ansible.builtin.user:
+    name: oracle
+    uid: 3000
+    shell: /bin/bash
+    home: /home/oracle
+    create_home: true
+    group: oinstall
+    groups: dba,oper,backupdba,dgdba,kmdba,racdba
+    generate_ssh_key: yes
+    ssh_key_type: ecdsa 
+    ssh_key_bits: 521
+    ssh_key_file: .ssh/id_ecdsa
+    expires: -1
+    append: yes
+
+- name: Display Role Sum Up
+  debug:
+    msg:
+      - 'This Steps completed below task for Single Instance at {{ansible_date_time.iso8601}}:'
+      - '- Create Required Users for Oracle RDBMS Software installation'

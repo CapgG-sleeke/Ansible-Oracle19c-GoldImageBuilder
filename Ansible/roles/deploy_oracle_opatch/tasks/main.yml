@@ -1,0 +1,61 @@
+- name: display start golden image message
+  remote_user: "{{ root_user }}"
+  debug:
+    msg:
+      - 'Oracle Database Software 19c Installation For Golden Images : Started for Single Instance at {{ansible_date_time.iso8601}}:'
+
+- name: Download oPatch upgrade
+  get_url:
+    validate_certs: no
+    url: "{{ oracle19c_opatch_url }}"
+    dest: "{{ stage_dir }}/opatch_upgrade.zip"
+    mode: '0775'
+  tags:
+    - download_opatch_upgrade
+
+- name: Remove 19c OPatch folder
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  ansible.builtin.file:
+    path: "{{ oracle_home }}/OPatch"
+    state: absent
+
+- name: Create 19c OPatch Directory
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  ansible.builtin.file:
+    path: "{{ oracle_home }}/OPatch"
+    state: directory
+    owner: "{{ oracle_user }}"
+    group: "{{ oracle_install_group }}"
+    mode: 0750
+  tags:
+   - db19c_Create_OPatch_Directory
+
+- name: Apply OPatch Upgrade
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  become: yes
+  become_user: "{{ oracle_user }}"
+  unarchive:
+     src={{ stage_dir }}/opatch_upgrade.zip
+     dest={{ oracle_home }}
+     remote_src=no
+     mode=0750
+     group="{{ oracle_install_group }}"
+     owner="{{ oracle_user }}"
+  tags:
+   - db19c_apply_opatch_Upgrade
+
+- name: Remove 19c OPatch Download
+  when: inventory_hostname in groups['dbservers']
+  remote_user: "{{ root_user }}"
+  ansible.builtin.file:
+    path: "{{ stage_dir }}/opatch_upgrade.zip"
+    state: absent
+
+- name: display post install message
+  debug:
+    msg:
+      - 'This Steps completed below task for Single Instance at {{ansible_date_time.iso8601}}:'
+      - '- Applies the latest OPatch patch set'

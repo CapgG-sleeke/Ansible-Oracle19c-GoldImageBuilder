@@ -1,0 +1,19 @@
+oraclemajorversion:              19c
+oracle_install_group:            oinstall
+mount_directory:                 /
+root_directory:                  /u01
+stage_dir:                       /u01/stage
+scripts_directory:               "{{ root_directory }}/app/scripts"
+oracle_base:                     /u01/app/oracle
+oracle_home:                     /u01/app/oracle/product/19.3.0
+oracle_gold_image_directory:     /mnt/downloads/Oracle
+oracle_inventory:                /u01/app/oraInventory 
+oracle_user:                     oracle
+root_user:                       root
+goldimage_name:                  "{{ oraclemajorversion }}GoldImage.zip"
+oradbsoft_rsp:                   "19cEE_SoftOnly"    
+preinstall_pkg:                  "oracle-database-preinstall-19c-1.0-1.el7.src.rpm"
+oracle19c_url:                   "https://192.168.56.109/Software/db_V982063-01.zip"
+oracle19c_intall_patch_url:      "https://192.168.56.109/Software/p35775632_190000_Linux-x86-64.zip"
+oracle19c_opatch_url:            "https://192.168.56.109/Software/p6880880_190000_Linux-x86-64.zip"
+preinstall19c_url:               "https://127.0.0.1/Software/oracle-database-preinstall-19c-1.0-1.el9.x86_64.rpm"

@@ -1,0 +1,53 @@
+- name: Create Groups Roles For Oracle RDBMS
+  remote_user: "{{ root_user }}"
+  debug:
+    msg:
+      - 'Oracle OS Groups Creation for RDBMS 19c : Started for Single Instance at {{ansible_date_time.iso8601}}:'
+
+- name: Ensure group dba exists with correct gid
+  ansible.builtin.group:
+    name: dba
+    state: present
+    gid: 3000
+
+- name: Ensure group oinstall exists with correct gid
+  ansible.builtin.group:
+    name: oinstall
+    state: present
+    gid: 3001
+
+- name: Ensure group oper exists with correct gid
+  ansible.builtin.group:
+    name: oper
+    state: present
+    gid: 3002
+
+- name: Ensure group backupdba exists with correct gid
+  ansible.builtin.group:
+    name: backupdba
+    state: present
+    gid: 3003
+
+- name: Ensure group dgdba exists with correct gid
+  ansible.builtin.group:
+    name: dgdba
+    state: present
+    gid: 3004
+
+- name: Ensure group kmdba exists with correct gid
+  ansible.builtin.group:
+    name: kmdba
+    state: present
+    gid: 3005
+
+- name: Ensure group RACdba exists with correct gid
+  ansible.builtin.group:
+    name: racdba
+    state: present
+    gid: 3006
+
+- name: Display Post Role Messages
+  debug:
+    msg:
+      - 'This Roles completed below task for Single Instance at {{ansible_date_time.iso8601}}:'
+      - '- Created OS Groups for Oracle RDBMS Single Instance'
