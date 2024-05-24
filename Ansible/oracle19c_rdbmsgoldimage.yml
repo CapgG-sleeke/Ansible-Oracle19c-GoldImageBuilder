@@ -2,4 +2,6 @@
   user: root
   
   roles:
-   - dbgoldimage_create
+   - create_oracle_gold_image
+   - remove_oracle_stage_folders
+

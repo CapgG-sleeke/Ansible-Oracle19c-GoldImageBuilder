@@ -1,0 +1,12 @@
+- hosts: dbservers
+  user: root
+  
+  roles:
+   - create_oracle_groups
+   - create_oracle_users
+   - create_oracle_os_requirements
+   - create_oracle_installation_folders
+   - deploy_oracle_rdbms_home_from_installer
+   - deploy_oracle_opatch
+   - create_oracle_gold_image
+   - remove_oracle_stage_folders
